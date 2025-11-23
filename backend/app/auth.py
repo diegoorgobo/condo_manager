@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from . import database, models, schemas
 
-SECRET_KEY = "SEU_SECRET_SUPER_SECRETO_TROQUE_ISSO" # Use env vars
+SECRET_KEY = os.getenv("SECRET_KEY", "sua_chave_secreta_padrao_para_teste_local")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 180
 
@@ -46,4 +46,5 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
+
     return user
