@@ -69,7 +69,12 @@ class ChatMessageResponse(BaseModel):
     class Config: orm_mode = True
 class IAPergunta(BaseModel): condominio_id: int; pergunta_texto: str
 class CondominioCreate(BaseModel): nome_fantasia: str; cnpj: str; endereco_completo: Optional[str] = None
-class CondominioResponse(BaseModel): condominio_id: int; nome_fantasia: str; class Config: orm_mode = True
+class CondominioResponse(BaseModel):
+    condominio_id: int
+    nome_fantasia: str
+
+    class Config:
+        orm_mode = True
 class UserApprove(BaseModel): permissao: Literal["SINDICO", "VISTORIADOR", "ADMINISTRATIVO"]; condominio_id: int
 class ManutencaoResponse(BaseModel):
     tarefa_id: int; tipo_tarefa: str; status_tarefa: str; data_proximo_vencimento: Optional[date]; detalhes_agendamento_semanal: Optional[str]; data_ultima_execucao: Optional[date]
@@ -212,4 +217,5 @@ async def get_financeiro(db: Session = Depends(get_db)):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+
     uvicorn.run("main:app", host="0.0.0.0", port=port)
