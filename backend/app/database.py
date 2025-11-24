@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool # <--- 1. IMPORTAR NullPool
 import os
 
 # 1. Tenta pegar a URL do Render (Variável de Ambiente)
@@ -32,4 +33,5 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
