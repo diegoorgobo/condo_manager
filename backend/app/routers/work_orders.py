@@ -1,14 +1,10 @@
-# backend/app/routers/work_orders.py
-
-from .. import schemas
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict # Para schemas simples
-from .. import database, models, auth, schemas
-
-from .. import database, models, auth # Importa componentes internos
+from pydantic import BaseModel, ConfigDict
+# Importa componentes internos (Corrigido para evitar repetição e conflito)
+from .. import database, models, auth, schemas 
 
 router = APIRouter(prefix="/work-orders", tags=["Work Orders"])
 
@@ -36,7 +32,7 @@ async def list_work_orders(
     
     # Lógica de autorização (Simplificado: garante que o usuário pertence ao condomínio)
     if current_user.condominium_id != condominium_id:
-         raise HTTPException(status_code=403, detail="Acesso negado a este condomínio")
+        raise HTTPException(status_code=403, detail="Acesso negado a este condomínio")
 
     orders = db.query(models.WorkOrder).filter(
         models.InspectionItem.condominium_id == condominium_id
@@ -44,7 +40,8 @@ async def list_work_orders(
     
     return orders
 
-@router.post("/{order_id}/status", response_model=models.WorkOrder, summary="Atualizar Status da OS")
+# 🚨 CORREÇÃO: TROCADO models.WorkOrder para schemas.WorkOrderResponse
+@router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
 async def update_wo_status(
     order_id: int,
     data: StatusUpdateSchema,
@@ -66,7 +63,8 @@ async def update_wo_status(
     db.refresh(db_wo)
     return db_wo
 
-@router.post("/{order_id}/close", response_model=models.WorkOrder, summary="Concluir OS com Foto")
+# 🚨 CORREÇÃO: TROCADO models.WorkOrder para schemas.WorkOrderResponse
+@router.post("/{order_id}/close", response_model=schemas.WorkOrderResponse, summary="Concluir OS com Foto")
 async def close_wo_with_photo(
     order_id: int,
     data: WorkOrderPhotoUpdateSchema,
