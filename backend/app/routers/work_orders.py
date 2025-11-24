@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict # Para schemas simples
+from .. import schemas
 
 from .. import database, models, auth # Importa componentes internos
 
