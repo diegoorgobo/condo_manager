@@ -8,6 +8,21 @@ router = APIRouter(prefix="/condominiums", tags=["Condominium Management"])
 
 get_db = database.get_db
 
+@router.get("/", response_model=list[schemas.ThemeConfigModel], summary="Listar Condomínios disponíveis")
+def list_available_condos(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Retorna o condomínio ao qual o usuário logado pertence."""
+    
+    # Filtra pelo ID do condomínio do usuário logado
+    condos = db.query(models.Condominium).filter(
+        models.Condominium.id == current_user.condominium_id
+    ).all()
+
+    # O código espera uma lista (mesmo que com um item), então retornamos 'condos'
+    return condos
+
 @router.post("/", response_model=schemas.CondominiumResponse, status_code=status.HTTP_201_CREATED)
 def create_condominium(
     condo: schemas.CondominiumCreate, 
