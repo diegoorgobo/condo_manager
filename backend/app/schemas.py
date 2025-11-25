@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import List, Optional
 from datetime import datetime, date
 from typing import Optional
+from datetime import date
 
 
 class CondominiumResponse(BaseModel):
@@ -134,6 +135,24 @@ class MessageResponse(MessageBase):
 
     class Config:
         orm_mode = True
+
+class MaintenanceAlertBase(BaseModel):
+    type: str # Ex: "Seguro Predial", "Limpeza Caixa D'água"
+    due_date: date # ⬅️ Campo de data do vencimento (YYYY-MM-DD)
+    period_years: int # 1 a 10 anos (para referência)
+    condominium_id: int
+
+class MaintenanceAlertCreate(MaintenanceAlertBase):
+    pass
+
+class MaintenanceAlertResponse(MaintenanceAlertBase):
+    id: int
+    alert_sent_1month: bool
+    alert_sent_1week: bool
+    alert_sent_1day: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 
 
