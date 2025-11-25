@@ -156,7 +156,7 @@ class Document(Base):
 class Message(Base):
     __tablename__ = "messages"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True) # <-- CORRIGIDO AQUI
     work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     content = Column(String, nullable=False)
@@ -165,4 +165,5 @@ class Message(Base):
     # Relacionamentos
     work_order = relationship("WorkOrder", back_populates="messages")
     user = relationship("User") # Relacionamento com o usuário que enviou
+
 
