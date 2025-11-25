@@ -7,12 +7,12 @@ from sqlalchemy.pool import NullPool # Importação do fix para o pooler do Supa
 import os
 
 # 1. Leitura da variável de ambiente (Render)
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+SQLALCHEMY_DATABASE_URL = os.getenv("postgresql://postgres.jqlygddtjkvtuckwpucp:tYEb8LxvOSmT6Z49@aws-1-sa-east-1.pooler.supabase.com:6543/postgres") #os.getenv("DATABASE_URL"
 
 # Fallback para teste local se ENV não estiver setada
 if not SQLALCHEMY_DATABASE_URL:
-    # Use sua string de conexão local aqui se necessário
-    SQLALCHEMY_DATABASE_URL = "postgresql://postgres:suasenha@localhost/condomanager" 
+    # USAMOS A STRING LIMPA DIRETAMENTE AQUI, JÁ QUE ELA NÃO TEM CARACTERES RUINS
+    SQLALCHEMY_DATABASE_URL = "postgresql://postgres.jqlygddtjkvtuckwpucp:tYEb8LxvOSmT6Z49@aws-1-sa-east-1.pooler.supabase.com:6543/postgres" 
 
 # 2. Correção Crítica do Prefixo (Supabase)
 # Substitui 'postgres://' por 'postgresql://' se necessário
