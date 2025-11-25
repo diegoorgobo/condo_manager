@@ -117,3 +117,55 @@ async def create_work_order(
         )
 
     return db_wo
+
+@router.get("/{work_order_id}/messages", response_model=List[schemas.MessageResponse], summary="Listar Mensagens de uma OS")
+def list_messages(
+    work_order_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    # 1. Verificar se a OS existe e se o usuário tem acesso (Simplificado: Apenas verifica se a OS existe)
+    work_order = db.query(models.WorkOrder).filter(models.WorkOrder.id == work_order_id).first()
+    if not work_order:
+        raise HTTPException(status_code=404, detail="Ordem de Serviço não encontrada")
+
+    # 2. Carregar todas as mensagens ordenadas por data
+    # Usa options(joinedload(models.Message.user)) para carregar o autor (User) em uma única query (otimização)
+    messages = db.query(models.Message).options(
+        joinedload(models.Message.user)
+    ).filter(
+        models.Message.work_order_id == work_order_id
+    ).order_by(
+        models.Message.created_at
+    ).all()
+    
+    return messages
+
+
+# --- NOVO: Endpoint para Enviar Mensagem ---
+@router.post("/{work_order_id}/messages", response_model=schemas.MessageResponse, status_code=201, summary="Enviar uma nova Mensagem para a OS")
+def create_message(
+    work_order_id: int,
+    message: schemas.MessageCreate, # O Pydantic valida o corpo da requisição (apenas 'content')
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    # 1. Verificar se a OS existe
+    work_order = db.query(models.WorkOrder).filter(models.WorkOrder.id == work_order_id).first()
+    if not work_order:
+        raise HTTPException(status_code=404, detail="Ordem de Serviço não encontrada")
+
+    # 2. Criar e salvar a mensagem
+    db_message = models.Message(
+        work_order_id=work_order_id,
+        user_id=current_user.id,
+        content=message.content,
+    )
+    db.add(db_message)
+    db.commit()
+    db.refresh(db_message)
+    
+    # 3. Recarregar o autor para inclusão no response_model (otimização)
+    db_message.user # Simplesmente acessa a propriedade para garantir que a relação foi carregada antes de serializar
+    
+    return db_message
