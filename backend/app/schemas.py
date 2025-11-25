@@ -153,6 +153,23 @@ class MaintenanceAlertResponse(MaintenanceAlertBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class CondominiumBase(BaseModel):
+    name: str
+    cnpj: str
+    address: Optional[str] = None
+    cleaning_company: Optional[str] = None
+    elevator_maintenance: Optional[str] = None
+    
+    # Cores/Logo (Para o White Labeling)
+    logo_url: Optional[str] = None
+    primary_color: Optional[str] = "#1A3D6B" # Padrão
+    secondary_color: Optional[str] = "#4CAF50"
+
+# Usamos este schema para a entrada de dados (POST/PUT)
+class CondominiumCreate(CondominiumBase):
+    pass
+
+
 
 
 
