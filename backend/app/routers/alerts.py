@@ -12,7 +12,6 @@ get_db = database.get_db
 
 # --- ROTA 1: CRIAÇÃO (Chamada pelo App Flutter) ---
 @router.post("/", response_model=schemas.MaintenanceAlertResponse, status_code=201, summary="Cadastrar novo Aviso de Manutenção")
-@router.post("/", response_model=schemas.MaintenanceAlertResponse, status_code=201, summary="Cadastrar novo Aviso de Manutenção")
 def create_maintenance_alert(
     alert: schemas.MaintenanceAlertCreate,
     db: Session = Depends(get_db),
