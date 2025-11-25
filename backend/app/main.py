@@ -4,6 +4,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List
 from .routers import documents, financial, work_orders, condominiums, users
+from .routers import documents, financial, work_orders, condominium
+
 import json
 # Importações internas
 from . import models, schemas, crud, database, auth
@@ -15,7 +17,7 @@ from .routers import documents, financial
 
 # Cria tabelas no banco (apenas para dev)
 #models.Base.metadata.create_all(bind=database.engine)
-
+app.add_middleware(...) # CORS
 app = FastAPI(title="CondoManager API")
 
 # Configuração de CORS
@@ -34,6 +36,7 @@ app.include_router(financial.router)
 app.include_router(work_orders.router)
 app.include_router(condominiums.router)
 app.include_router(users.router)
+app.include_router(condominium.router)
 # ----------------------------
 
 
@@ -125,5 +128,6 @@ async def create_inspection_with_files(
     db.commit() # Salva todas as alterações (vistoria, itens, OSs)
     
     return {"status": "success", "inspection_id": db_inspection.id, "message": "Vistoria e Ordens de Serviço (se necessário) criadas com sucesso."}
+
 
 
