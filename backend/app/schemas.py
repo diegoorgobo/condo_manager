@@ -96,3 +96,29 @@ class WorkOrderResponse(BaseConfig):
     # Configuração Pydantic v2
     model_config = ConfigDict(from_attributes=True)
 
+class UserMessage(BaseModel):
+    # Schema simplificado para exibir o autor da mensagem
+    id: int
+    name: str
+
+    class Config:
+        orm_mode = True
+
+class MessageBase(BaseModel):
+    content: str
+
+class MessageCreate(MessageBase):
+    pass # Apenas o conteúdo é necessário na criação
+
+class MessageResponse(MessageBase):
+    id: int
+    work_order_id: int
+    user_id: int
+    created_at: datetime
+    # Adicionamos o autor para que o frontend saiba quem enviou
+    user: UserMessage # ⬅️ NOVO: Incluir o nome do autor
+
+    class Config:
+        orm_mode = True
+
+
