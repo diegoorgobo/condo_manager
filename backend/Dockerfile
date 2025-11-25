@@ -25,3 +25,5 @@ COPY ./app /code/app
 # O Render injeta a variável $PORT automaticamente. 
 # Se rodar local, usa a porta 8000.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "python app/prestart.py && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+
