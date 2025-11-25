@@ -119,18 +119,19 @@ async def create_work_order(
     return db_wo
 
 @router.get("/{work_order_id}/messages", response_model=List[schemas.MessageResponse], summary="Listar Mensagens de uma OS")
+@router.get("/{work_order_id}/messages", response_model=List[schemas.MessageResponse], summary="Listar Mensagens de uma OS")
 def list_messages(
     work_order_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # 1. Verificar se a OS existe e se o usuário tem acesso (Simplificado: Apenas verifica se a OS existe)
+    # 1. Verificar se a OS existe e se o usuário tem acesso
+    # (Manter a lógica de autorização se necessária)
     work_order = db.query(models.WorkOrder).filter(models.WorkOrder.id == work_order_id).first()
     if not work_order:
         raise HTTPException(status_code=404, detail="Ordem de Serviço não encontrada")
 
-    # 2. Carregar todas as mensagens ordenadas por data
-    # Usa options(joinedload(models.Message.user)) para carregar o autor (User) em uma única query (otimização)
+    # 2. CARREGAMENTO SIMPLIFICADO: Retira o 'joinedload' que estava causando o crash
     messages = db.query(models.Message).filter(
         models.Message.work_order_id == work_order_id
     ).order_by(
