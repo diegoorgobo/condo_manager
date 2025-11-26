@@ -90,3 +90,34 @@ def run_daily_scheduler(db: Session = Depends(get_db)):
     db.commit()
     
     return {"status": "Scheduler finished", "alerts_dispatched": len(updated_alerts), "updated_ids": updated_alerts}
+
+@router.get(
+    "/list/{condominium_id}",
+    response_model=list[schemas.MaintenanceAlertResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Listar Alertas de Manutenção por Condomínio"
+)
+def list_maintenance_alerts(
+    condominium_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Busca todos os alertas de manutenção ativos para um condomínio específico.
+    """
+    
+    # 🚨 Adicionar Lógica de Segurança
+    # Garante que o usuário logado só possa ver alertas do seu próprio condomínio.
+    if current_user.condominium_id != condominium_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Não autorizado a acessar alertas deste condomínio."
+        )
+        
+    # Busca os alertas no banco de dados.
+    alerts = db.query(models.MaintenanceAlert).filter(
+        models.MaintenanceAlert.condominium_id == condominium_id
+    ).order_by(models.MaintenanceAlert.due_date).all()
+    
+    # Retorna a lista, que será serializada pelo Pydantic (response_model)
+    return alerts
