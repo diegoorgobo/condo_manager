@@ -25,48 +25,40 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (Diagnóstico Bruto)")
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
 def list_work_orders(
     condominium_id: Optional[int] = None,
     sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Retorna dados brutos para confirmar a leitura da tabela (Ignora Pydantic/ORM)."""
+    """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    # 🚨 TESTE FINAL: Consulta SQL Bruta (Carrega os campos que o Pydantic exige)
-    # Ignoramos a ordenação complexa e carregamos apenas as colunas necessárias para o Pydantic.
-    
-    query = text("""
-        SELECT id, title, description, status, created_at, closed_at, photo_before_url, photo_after_url, item_id, provider_id
-        FROM work_orders
-        ORDER BY created_at DESC
-    """)
-    
-    raw_results = db.execute(query).fetchall()
+    # 1. CRIAÇÃO DA QUERY BASE e EAGER LOADING
+    query = db.query(models.WorkOrder)
 
-    # Mapeamento manual para o Schema WorkOrderResponse, definindo explicitamente NULL para os campos de relação
-    orders_serializable = []
-    for row in raw_results:
-        orders_serializable.append({
-            # Mapeamento direto das 10 colunas acima
-            'id': row[0],
-            'title': row[1],
-            'description': row[2],
-            'status': row[3],
-            'created_at': row[4].isoformat() if row[4] else None,
-            'closed_at': row[5].isoformat() if row[5] else None,
-            'photo_before_url': row[6],
-            'photo_after_url': row[7],
-            'item_id': row[8],
-            'provider_id': row[9],
-            
-            # 🚨 Campos Aninhados (Obrigatórios no Schema, mas ausentes na consulta bruta)
-            'condominium': None, 
-        })
+    # 🚨 FIX CRÍTICO: Confia apenas no options(joinedload) para construir o OUTER JOIN (LEFT JOIN)
+    # Isso carrega o nome do condomínio e inclui OSs manuais (item_id=NULL).
+    query = query.options(
+        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+    )
 
-    # O FastAPI tentará serializar esta lista de dicionários Python
-    return orders_serializable
+    # 2. AUTORIZAÇÃO E FILTRAGEM (Reativada e Corrigida)
+    if current_user.role != 'Programador':
+        user_condo_id = current_user.condominium_id
+        
+        if user_condo_id is not None:
+            query = query.filter(
+                or_(
+                    # 1. OSs vinculadas ao condomínio do usuário logado
+                    models.InspectionItem.condominium_id == user_condo_id,
+                    
+                    # 2. OSs sem vínculo (manuais)
+                    models.WorkOrder.item_id.is_(None)
+                )
+            )
+        else:
+            return [] 
 
     # 3. FILTRAGEM POR QUERY PARAMETER
     if condominium_id:
