@@ -35,7 +35,7 @@ def list_work_orders(
     """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
     # Base da Query: Começa com WorkOrder
-    query = db.query(models.WorkOrder).outerjoin(models.InspectionItem).options(
+    query = query.options(
         joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
     )
 
@@ -47,15 +47,17 @@ def list_work_orders(
     )
     
     # 2. AUTORIZAÇÃO E FILTRAGEM
-    #if current_user.role != 'Programador':
-        # Usuários normais só veem OSs ligadas ao seu condomínio
-        # E/OU OSs que foram criadas no contexto do seu condomínio (se houvesse um campo direto)
-    #    query = query.filter(
-    #        models.InspectionItem.condominium_id == current_user.condominium_id
-    #    )
+    if current_user.role != 'Programador':
+        # Filtra pelo Condomínio ID do usuário logado
+        # O .has() é mais robusto para relacionamentos que podem ser NULL (Outer Join)
+        query = query.filter(
+            models.WorkOrder.item.has(models.InspectionItem.condominium_id == current_user.condominium_id)
+        )
+        # Se você tiver OSs manuais (item_id=null), você precisa de OR logic para exibi-las.
+        # No momento, vamos manter este filtro de segurança.
 
     if condominium_id:
-        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
+        query = query.filter(models.WorkOrder.item.has(models.InspectionItem.condominium_id == condominium_id))
 
     # 3. ORDENAÇÃO
     if sort_by == 'status':
