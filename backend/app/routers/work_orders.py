@@ -25,27 +25,46 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço por Condomínio")
-async def list_work_orders(
-    condominium_id: int,
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
+def list_work_orders(
+    condominium_id: Optional[int] = None,
+    sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # 🚨 CÓDIGO FINAL DE DEBUG: RETORNA TUDO E IGNORA O FILTRO E O JOIN
-    orders = db.query(models.WorkOrder).all() 
-    # Isso deve retornar os 18 registros que você viu no Supabase.
+    """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    try:
-        # A serialização Pydantic acontece automaticamente no retorno. 
-        # Envolvemos em um bloco try para capturar o erro que a está impedindo.
-        return orders 
-    except Exception as e:
-        # Este print mostrará o campo exato que está inválido
-        print(f"ERRO FATAL DE SERIALIZAÇÃO: {e}") 
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Falha de Serialização: Campo inválido encontrado no banco. Trace: {e}"
+    # 🚨 CRÍTICO: Define o carregamento aninhado (Eager Loading)
+    query = db.query(models.WorkOrder).options(
+        # Busca o Condomínio (Condo) através do Item (Item) em uma única query
+        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+    )
+
+    # 1. AUTORIZAÇÃO E FILTRAGEM
+    if current_user.role != 'Programador':
+        # Usuários normais só veem OSs ligadas ao seu condomínio
+        query = query.filter(models.InspectionItem.condominium.has(id=current_user.condominium_id))
+
+    if condominium_id:
+        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
+
+    # 2. ORDENAÇÃO (Mantida a lógica por Status e Recente)
+    if sort_by == 'status':
+        status_order = case(
+            (models.WorkOrder.status == 'Pendente', 1),
+            (models.WorkOrder.status == 'Em Andamento', 2),
+            (models.WorkOrder.status == 'Concluído', 3),
+            else_=4
         )
+        query = query.order_by(status_order, models.WorkOrder.created_at.desc())
+    else:
+        query = query.order_by(models.WorkOrder.created_at.desc())
+
+    orders = query.all()
+    
+    # 3. TRATAMENTO DE OSs MANUAIS: 
+    # Esta query agora garante que o objeto condominium está carregado, se o item não for nulo.
+    return orders
 
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
 async def update_wo_status(
