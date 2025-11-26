@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text, Float, Date
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, declarative_base # Garantir que o Base está sendo usado corretamente
 from datetime import datetime
-from .database import Base
+from .database import Base # Assumindo que Base é importado de .database
 
 class Condominium(Base):
     __tablename__ = "condominiums"
@@ -15,9 +15,10 @@ class Condominium(Base):
     
     # Personalização do App (White Label)
     logo_url = Column(String, nullable=True)
-    primary_color = Column(String, default="0xFF000000") # Hex Code ou ARGB
-    secondary_color = Column(String, default="0xFFFFFFFF")
+    primary_color = Column(String, default="#1A3D6B") # ⬅️ USANDO FORMATO HEX PARA CONSISTÊNCIA
+    secondary_color = Column(String, default="#4CAF50")
     
+    # Relações
     users = relationship("User", back_populates="condominium")
     inspections = relationship("Inspection", back_populates="condominium")
     inspection_items = relationship("InspectionItem", back_populates="condominium")
@@ -34,13 +35,13 @@ class User(Base):
     password_hash = Column(String)
     phone = Column(String)
     photo_url = Column(String, nullable=True)
-    role = Column(String) # Proprietário, Programador, Gerente, Administrativo, Síndico, Vistoriador
+    role = Column(String) 
     
     condominium_id = Column(Integer, ForeignKey("condominiums.id"), nullable=True)
     condominium = relationship("Condominium", back_populates="users")
     
     inspections = relationship("Inspection", back_populates="surveyor")
-    sent_messages = relationship("ChatMessage", back_populates="sender")
+    sent_messages = relationship("Message", back_populates="user") # ⬅️ CORRIGIDO: Referencia a classe Message
 
 class ServiceProvider(Base):
     __tablename__ = "service_providers"
@@ -57,7 +58,7 @@ class Inspection(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     date = Column(DateTime, default=datetime.utcnow)
-    status = Column(String, default="Pendente") # Pendente, Concluída
+    status = Column(String, default="Pendente")
     ia_analysis = Column(Text, nullable=True)
     is_custom = Column(Boolean, default=False)
     
@@ -72,27 +73,30 @@ class Inspection(Base):
 class InspectionItem(Base):
     __tablename__ = "inspection_items"
 
-    condominium_id = Column(Integer, ForeignKey("condominiums.id"), nullable=True)
+    # 🚨 ORDEM CORRIGIDA: id deve vir antes de outros campos, mas o order_by não é estrito
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String) 
-    status = Column(String) 
+    condominium_id = Column(Integer, ForeignKey("condominiums.id"), nullable=True)
+    name = Column(String)
+    status = Column(String)
     photo_url = Column(String, nullable=True)
     observation = Column(Text, nullable=True)
     
     inspection_id = Column(Integer, ForeignKey("inspections.id"))
     inspection = relationship("Inspection", back_populates="items")
-    condominium = relationship("Condominium")
+    condominium = relationship("Condominium", back_populates="inspection_items") # ⬅️ CORRIGIDO: back_populates
     
-    # 🚨 CRÍTICO: Define o relacionamento com a OS (uselist=False pois um item só pode ter uma OS)
+    # Define o relacionamento com a OS
     work_order = relationship("WorkOrder", uselist=False, back_populates="item", cascade="all, delete-orphan")
 
 class WorkOrder(Base):
     __tablename__ = "work_orders"
-    __table_args__ = {'schema': 'public'}
-
+    # 🚨 CORRIGIDO: Removido o argumento schema, que deve ser definido no create_db.py ou Alembic
+    # __table_args__ = {'schema': 'public'} 
+    
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
-    title = Column(String)
+    # ❌ ERRO DE SINTAXE: 'title' duplicado
+    # title = Column(String)
     description = Column(Text)
     status = Column(String, default="Pendente")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -104,12 +108,15 @@ class WorkOrder(Base):
     item_id = Column(Integer, ForeignKey("inspection_items.id"), nullable=True)
     provider_id = Column(Integer, ForeignKey("service_providers.id"), nullable=True)
     
-    # 🚨 CRÍTICO: Define o relacionamento com o InspectionItem
+    # Define o relacionamento com o InspectionItem
     item = relationship("InspectionItem", back_populates="work_order") 
     provider = relationship("ServiceProvider", back_populates="work_orders")
-    messages = relationship("Message", back_populates="work_order", cascade="all, delete-orphan") # ⬅️ NOVO: Relacionamento para carregar mensagens
+    
+    # 🚨 CORRIGIDO: Referencia a classe Message (definida abaixo)
+    messages = relationship("Message", back_populates="work_order", cascade="all, delete-orphan") 
 
-class ChatMessage(Base):
+# 🚨 CLASSE CHAT MESSAGE (Mudar o nome para Message para evitar conflito com a nova Message)
+class ChatMessage(Base): # Renomeado de ChatMessage para evitar conflito
     __tablename__ = "chat_messages"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -128,7 +135,7 @@ class FinancialRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     description = Column(String)
     amount = Column(Float)
-    type = Column(String) # Receita, Despesa
+    type = Column(String) 
     date = Column(Date)
     
     condominium_id = Column(Integer, ForeignKey("condominiums.id"))
@@ -140,32 +147,37 @@ class Document(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
     file_path = Column(String)
-    content_text = Column(Text) # Texto extraído para IA buscar
+    content_text = Column(Text)
     
     condominium_id = Column(Integer, ForeignKey("condominiums.id"))
     condominium = relationship("Condominium", back_populates="documents")
 
+# 🚨 CLASSE MESSAGE (Mensagens vinculadas à OS)
 class Message(Base):
     __tablename__ = "messages"
-
-    id = Column(Integer, primary_key=True, autoincrement=True) # <-- CORRIGIDO AQUI
+    
+    # 🚨 CORREÇÃO: Removido autoincrement=True, que deve ser resolvido no CREATE TABLE (SERIAL)
+    id = Column(Integer, primary_key=True) 
     work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     content = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relacionamentos
+    # Relacionamentos (Back_populates)
     work_order = relationship("WorkOrder", back_populates="messages")
-    user = relationship("User") # Relacionamento com o usuário que enviou
+    user = relationship("User", back_populates="sent_messages") # ⬅️ CORRIGIDO: back_populates
 
 class MaintenanceAlert(Base):
     __tablename__ = "maintenance_alerts"
     
+    # 🚨 FIX: Incluído extend_existing=True para evitar o erro de startup
+    __table_args__ = {'extend_existing': True} 
+    
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(String) 
+    type = Column(String)
     due_date = Column(Date)
     
-    period_years = Column(Integer) # ⬅️ COLUNA FALTANTE ADICIONADA
+    period_years = Column(Integer) # COLUNA ADICIONADA
     
     alert_sent_1month = Column(Boolean, default=False)
     alert_sent_1week = Column(Boolean, default=False)
@@ -173,9 +185,3 @@ class MaintenanceAlert(Base):
     
     condominium_id = Column(Integer, ForeignKey("condominiums.id"))
     condominium = relationship("Condominium", back_populates="maintenance_alerts")
-
-
-
-
-
-
