@@ -38,9 +38,9 @@ def list_work_orders(
     query = db.query(models.WorkOrder)
 
     # LEFT OUTER JOIN para lidar com OSs manuais, e EAGER LOAD para carregar o nome do Condomínio.
-    query = query.outerjoin(models.InspectionItem).options(
-        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
-    )
+    query = query.options(
+    joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+)
 
     # 2. AUTORIZAÇÃO E FILTRAGEM (CRÍTICO)
     if current_user.role != 'Programador':
