@@ -41,6 +41,9 @@ def create_condominium(
     db_condo = db.query(models.Condominium).filter(models.Condominium.cnpj == condo.cnpj).first()
     if db_condo:
         raise HTTPException(status_code=400, detail="CNPJ já registrado.")
+
+    if current_user.role not in ['Programador', 'Administrativo']:
+         raise HTTPException(status_code=403, detail="Acesso negado. Apenas Programadores ou Administradores podem criar condomínios.")
     
     # 2. Cria a instância do modelo
     db_condo = models.Condominium(**condo.model_dump())
@@ -48,6 +51,7 @@ def create_condominium(
     db.add(db_condo)
     db.commit()
     db.refresh(db_condo)
+    db_condo = db.query(models.Condominium).filter(models.Condominium.cnpj == condo.cnpj).first()
     return db_condo
 
 @router.get("/{condominium_id}", response_model=schemas.CondominiumResponse)
