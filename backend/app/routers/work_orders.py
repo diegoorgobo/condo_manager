@@ -27,56 +27,36 @@ get_db = database.get_db
 
 @router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
 def list_work_orders(
-    condominium_id: Optional[int] = None,
-    sort_by: str = "status",
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
+    # ... (parâmetros e dependências) ...
 ):
-    """Filtra as OSs pelo condomínio e ordena por status ou data."""
+    # 🚨 TESTE FINAL DE LEITURA: SQL Bruto para Bypassar o ORM
+    query = text("""
+        SELECT id, title, description, status, created_at, closed_at, photo_before_url, photo_after_url, item_id, provider_id
+        FROM work_orders
+        ORDER BY created_at DESC
+    """)
     
-    # 1. CRIAÇÃO DA QUERY BASE e EAGER LOADING (Left Join implícito/explícito)
-    query = db.query(models.WorkOrder)
+    raw_results = db.execute(query).fetchall()
 
-    # FIX: Usar o outerjoin explícito para forçar o LEFT JOIN
-    query = query.outerjoin(models.InspectionItem).options(
-        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
-    )
+    # Mapeamento manual para o Schema WorkOrderResponse (aceita NULLs)
+    orders_serializable = []
+    for row in raw_results:
+        orders_serializable.append({
+            'id': row[0],
+            'title': row[1],
+            'description': row[2],
+            'status': row[3],
+            'created_at': row[4].isoformat() if row[4] else None,
+            'closed_at': row[5].isoformat() if row[5] else None,
+            'photo_before_url': row[6],
+            'photo_after_url': row[7],
+            'item_id': row[8],
+            'provider_id': row[9],
+            'condominium': None, # Omissão de relacionamento para este teste
+        })
 
-    # 2. AUTORIZAÇÃO E FILTRAGEM (FIX FINAL DO FILTRO)
-    if current_user.role != 'Programador':
-        user_condo_id = current_user.condominium_id
-        
-        if user_condo_id is not None:
-            query = query.filter(
-                or_(
-                    # 1. OSs vinculadas ao condomínio do usuário logado
-                    models.InspectionItem.condominium_id == user_condo_id,
-                    
-                    # 2. OSs sem vínculo (manuais) 
-                    models.WorkOrder.item_id.is_(None) # <--- SINTAXE CORRIGIDA
-                )
-            )
-        else:
-            return [] 
-
-    # 3. FILTRAGEM POR QUERY PARAMETER
-    if condominium_id:
-        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
-
-    # 4. ORDENAÇÃO
-    if sort_by == 'status':
-        status_order = case(
-            (models.WorkOrder.status == 'Pendente', 1),
-            (models.WorkOrder.status == 'Em Andamento', 2),
-            (models.WorkOrder.status == 'Concluído', 3),
-            else_=4
-        )
-        query = query.order_by(status_order, models.WorkOrder.created_at.desc())
-    else:
-        query = query.order_by(models.WorkOrder.created_at.desc())
-
-    orders = query.all()
-    return orders
+    # 🚨 Se essa lista aparecer, o problema é puramente a sintaxe do JOIN no ORM.
+    return orders_serializable
     
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
 async def update_wo_status(
