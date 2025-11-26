@@ -35,7 +35,9 @@ def list_work_orders(
     """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
     # Base query com eager loading
-    query = db.query(models.WorkOrder)
+    query = db.query(models.WorkOrder).outerjoin(models.InspectionItem).options(
+        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+    )
 
     # 1. CRIAÇÃO DO LEFT JOIN para lidar com item_id=null
     query = query.outerjoin(models.InspectionItem).options(
@@ -70,6 +72,7 @@ def list_work_orders(
 
     # 4. ORDENAÇÃO
     if sort_by == 'status':
+        # ... (lógica de ordenação por status) ...
         status_order = case(
             (models.WorkOrder.status == 'Pendente', 1),
             (models.WorkOrder.status == 'Em Andamento', 2),
