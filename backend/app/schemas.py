@@ -108,9 +108,9 @@ class WorkOrderResponse(BaseModel):
     status: str
     created_at: datetime
     closed_at: Optional[datetime] = None
-    
-    # 🚨 NOVO CAMPO: Condomínio Aninhado
     condominium: Optional[SimpleCondo] = None
+    item_id: Optional[int] = None
+    provider_id: Optional[int] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -171,6 +171,7 @@ class CondominiumBase(BaseModel):
 # Usamos este schema para a entrada de dados (POST/PUT)
 class CondominiumCreate(CondominiumBase):
     pass
+
 
 
 
