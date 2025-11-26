@@ -53,15 +53,16 @@ def list_work_orders(
             return [] 
 
         query = query.filter(
-            or_(
-                # 1. OSs vinculadas ao condomínio do usuário logado
-                models.InspectionItem.condominium_id == user_condo_id,
-                
-                # 2. OSs sem vínculo (manuais) criadas pelo usuário.
-                # (Esta condição é uma otimização, mas a anterior já é necessária para ver o dado)
-                models.WorkOrder.item_id.is_(None())
-            )
+        or_(
+            # 🚨 CORREÇÃO CRÍTICA: Mudar None() para None
+            models.WorkOrder.item_id.is_(None), 
+            
+            # 2. OSs vinculadas ao condomínio do usuário logado
+            models.WorkOrder.item.has(
+                models.InspectionItem.condominium_id == current_user.condominium_id
+            ),
         )
+    )
     
     # 3. FILTRAGEM POR QUERY PARAMETER (Filtro por dropdown)
     if condominium_id:
