@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, case, or_ # ⬅️ NOVOS IMPORTS para ordenação/filtragem
-from sqlalchemy.orm import joinedload, aliased # ⬅️ NOVOS IMPORTS para otimização
+from sqlalchemy.orm import joinedload, outerjoin # ⬅️ NOVOS IMPORTS para otimização
 # Importa componentes internos (Corrigido para evitar repetição e conflito)
 from .. import database, models, auth, schemas 
 
@@ -28,28 +28,36 @@ get_db = database.get_db
 @router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
 def list_work_orders(
     condominium_id: Optional[int] = None,
-    sort_by: str = "status",
+    sort_by: str = "status", # 'recent', 'status'
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    # 🚨 CRÍTICO: Define o carregamento aninhado (Eager Loading)
-    query = db.query(models.WorkOrder).options(
-        # Busca o Condomínio (Condo) através do Item (Item) em uma única query
+    # Base da Query: Começa com WorkOrder
+    query = db.query(models.WorkOrder)
+
+    # 1. CARREGAMENTO E JOIN (CRÍTICO)
+    # Usamos OUTERJOIN para incluir OSs que NÃO têm InspectionItem (OSs Manuais)
+    query = query.outerjoin(models.InspectionItem).options(
+        # 🚨 Carregamento Eager Load: Busca o Condomínio via Item
         joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
     )
-
-    # 1. AUTORIZAÇÃO E FILTRAGEM
+    
+    # 2. AUTORIZAÇÃO E FILTRAGEM
     if current_user.role != 'Programador':
         # Usuários normais só veem OSs ligadas ao seu condomínio
-        query = query.filter(models.InspectionItem.condominium.has(id=current_user.condominium_id))
+        # E/OU OSs que foram criadas no contexto do seu condomínio (se houvesse um campo direto)
+        query = query.filter(
+            models.InspectionItem.condominium_id == current_user.condominium_id
+        )
 
     if condominium_id:
         query = query.filter(models.InspectionItem.condominium_id == condominium_id)
 
-    # 2. ORDENAÇÃO (Mantida a lógica por Status e Recente)
+    # 3. ORDENAÇÃO
     if sort_by == 'status':
+        # Ordenação por Status: Pendente (1) -> Em Andamento (2) -> Concluído (3)
         status_order = case(
             (models.WorkOrder.status == 'Pendente', 1),
             (models.WorkOrder.status == 'Em Andamento', 2),
@@ -57,13 +65,12 @@ def list_work_orders(
             else_=4
         )
         query = query.order_by(status_order, models.WorkOrder.created_at.desc())
-    else:
+    else: # Default: Mais Recente ('recent')
         query = query.order_by(models.WorkOrder.created_at.desc())
 
     orders = query.all()
     
-    # 3. TRATAMENTO DE OSs MANUAIS: 
-    # Esta query agora garante que o objeto condominium está carregado, se o item não for nulo.
+    # 4. Retorna a lista (que deve incluir as OSs manuais, pois o OUTERJOIN foi usado)
     return orders
 
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
