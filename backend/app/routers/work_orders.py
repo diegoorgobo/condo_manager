@@ -25,53 +25,29 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (SQL Mínimo)")
 def list_work_orders(
     condominium_id: Optional[int] = None,
     sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """
-    Busca OSs usando SQL Bruto com JOINs para garantir que os registros NULL (Manuais) 
-    e o nome do condomínio sejam retornados, ignorando a falha do ORM.
-    """
+    """Retorna dados brutos da tabela work_orders sem joins."""
     
-    # Define a consulta SQL base com LEFT JOINs explícitos
-    sql_base = """
+    from sqlalchemy import text # Necessário para SQL
+    
+    # 🚨 TESTE FINAL: APENAS COLUNAS DA TABELA work_orders
+    query = text("""
         SELECT 
-            wo.id, wo.title, wo.description, wo.status, wo.created_at, wo.closed_at, 
-            wo.photo_before_url, wo.photo_after_url, wo.item_id, wo.provider_id,
-            c.name AS condominium_name, c.id AS condominium_id
-        FROM work_orders wo
-        LEFT JOIN inspection_items ii ON wo.item_id = ii.id
-        LEFT JOIN condominiums c ON ii.condominium_id = c.id
-    """
-    where_clauses = ["1=1"] # Inicia o WHERE com uma condição verdadeira
+            id, title, description, status, created_at, closed_at, 
+            photo_before_url, photo_after_url, item_id, provider_id
+        FROM work_orders
+        ORDER BY created_at DESC
+    """)
     
-    # 1. FILTRO DE SEGURANÇA (Para usuários não-Programadores)
-    if current_user.role != 'Programador' and current_user.condominium_id is not None:
-        user_condo_id = current_user.condominium_id
-        # A condição OR permite listar OSs ligadas ao condo OU as OSs manuais (ii.condominium_id IS NULL)
-        where_clauses.append(f"""
-            (ii.condominium_id = {user_condo_id} OR wo.item_id IS NULL)
-        """)
+    raw_results = db.execute(query).fetchall()
 
-    # 2. FILTRO POR QUERY PARAMETER (Dropdown)
-    if condominium_id is not None:
-        where_clauses.append(f"ii.condominium_id = {condominium_id}")
-
-    # 3. MONTAGEM DA QUERY FINAL
-    sql_query_text = f"""
-        {sql_base}
-        WHERE {' AND '.join(where_clauses)}
-        ORDER BY wo.created_at DESC 
-    """
-
-    # 4. EXECUÇÃO DO SQL BRUTO
-    raw_results = db.execute(text(sql_query_text)).fetchall()
-
-    # 5. MAPEAMENTO MANUAL PARA PYDANTIC/JSON
+    # Mapeamento manual para Pydantic (necessário para serializar o SQL bruto)
     orders_serializable = []
     for row in raw_results:
         orders_serializable.append(schemas.WorkOrderResponse(
@@ -79,16 +55,14 @@ def list_work_orders(
             title=row[1],
             description=row[2],
             status=row[3],
-            created_at=row[4],
-            closed_at=row[5],
-            photo_before_url=row[6],
-            photo_after_url=row[7],
-            item_id=row[8],
-            provider_id=row[9],
-            # Mapeamento do objeto Condomínio (se o ID existir)
-            condominium=schemas.SimpleCondo(id=row[11], name=row[10]) 
-                        if row[11] is not None else None,
-        ).model_dump()) # Converte para dict para serialização final
+            created_at=row[4].isoformat() if row[4] else None,
+            closed_at=row[5].isoformat() if row[5] else None,
+            photo_before_url: row[6],
+            photo_after_url: row[7],
+            item_id: row[8],
+            provider_id: row[9],
+            condominium: None, # Omissão de relacionamento
+        ).model_dump())
         
     return orders_serializable
     
