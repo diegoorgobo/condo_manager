@@ -32,15 +32,36 @@ def list_work_orders(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Filtra as OSs pelo condomínio e ordena por status ou data. (TEMPORARIAMENTE SEM FILTRO)"""
+    """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    # 🚨 CRÍTICO: Consulta mais simples possível para provar a leitura da tabela.
+    # 1. CRIAÇÃO DA QUERY BASE e OUTER JOIN OBRIGATÓRIO
     query = db.query(models.WorkOrder)
 
-    # 1. AUTORIZAÇÃO / FILTRO (Removido temporariamente para o teste)
-    # ----------------------------------------------------------------------
-    
-    # 2. ORDENAÇÃO
+    # LEFT OUTER JOIN para lidar com OSs manuais, e EAGER LOAD para carregar o nome do Condomínio.
+    query = query.outerjoin(models.InspectionItem).options(
+        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+    )
+
+    # 2. AUTORIZAÇÃO E FILTRAGEM (CRÍTICO)
+    if current_user.role != 'Programador':
+        user_condo_id = current_user.condominium_id
+        
+        # O filtro só se aplica se o usuário estiver vinculado a um condomínio
+        if user_condo_id is not None:
+            query = query.filter(
+                or_(
+                    # A) OSs criadas sem item (manual)
+                    models.WorkOrder.item_id.is_(None),
+                    # B) OSs vinculadas ao condomínio do usuário logado
+                    models.InspectionItem.condominium_id == user_condo_id,
+                )
+            )
+
+    # 3. FILTRAGEM POR QUERY PARAMETER (Filtro do dropdown)
+    if condominium_id:
+        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
+
+    # 4. ORDENAÇÃO
     if sort_by == 'status':
         status_order = case(
             (models.WorkOrder.status == 'Pendente', 1),
@@ -53,8 +74,6 @@ def list_work_orders(
         query = query.order_by(models.WorkOrder.created_at.desc())
 
     orders = query.all()
-    
-    # 🚨 NOTA: Os objetos 'orders' terão o campo 'condominium' como NULL, o que é esperado neste teste.
     return orders
     
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
