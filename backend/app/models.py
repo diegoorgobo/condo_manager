@@ -166,4 +166,21 @@ class Message(Base):
     work_order = relationship("WorkOrder", back_populates="messages")
     user = relationship("User") # Relacionamento com o usuário que enviou
 
+class MaintenanceAlert(Base):
+    __tablename__ = "maintenance_alerts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String) 
+    due_date = Column(Date)
+    
+    period_years = Column(Integer) # ⬅️ COLUNA FALTANTE ADICIONADA
+    
+    alert_sent_1month = Column(Boolean, default=False)
+    alert_sent_1week = Column(Boolean, default=False)
+    alert_sent_1day = Column(Boolean, default=False)
+    
+    condominium_id = Column(Integer, ForeignKey("condominiums.id"))
+    condominium = relationship("Condominium", back_populates="maintenance_alerts")
+
+
 
