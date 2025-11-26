@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, case, or_ # ⬅️ NOVOS IMPORTS para ordenação/filtragem
+from sqlalchemy.orm import joinedload, aliased # ⬅️ NOVOS IMPORTS para otimização
 # Importa componentes internos (Corrigido para evitar repetição e conflito)
 from .. import database, models, auth, schemas 
 
@@ -168,3 +170,51 @@ def create_message(
     db_message.user # Simplesmente acessa a propriedade para garantir que a relação foi carregada antes de serializar
     
     return db_message
+
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
+def list_work_orders(
+    # 🚨 NOVOS PARÂMETROS DE FILTRO E ORDENAÇÃO
+    condominium_id: Optional[int] = None,
+    sort_by: str = "recent", # 'recent', 'status'
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Filtra as OSs pelo condomínio e ordena por status ou data."""
+    
+    # Alias para o Join
+    Item = models.InspectionItem
+    Condo = models.Condominium
+    
+    # Base da Query: Carrega OSs e faz join para obter o nome do Condomínio
+    query = db.query(models.WorkOrder).options(
+        # 🚨 Carrega o Condomínio via Item para evitar N+1 queries
+        joinedload(models.WorkOrder.item).joinedload(Condo)
+    )
+
+    # 1. AUTORIZAÇÃO: Filtra apenas pelos condomínios que o usuário pode ver
+    if current_user.role != 'Programador':
+        # Filtra pelo ID do condomínio do usuário
+        query = query.filter(Condo.id == current_user.condominium_id)
+    
+    # 2. FILTRAGEM: Filtra pelo Condomínio ID passado pelo Frontend
+    if condominium_id:
+        query = query.filter(Condo.id == condominium_id)
+
+    # 3. ORDENAÇÃO
+    if sort_by == 'status':
+        # Ordenação por Status: Pendente (1) -> Em Andamento (2) -> Concluído (3)
+        status_order = case(
+            (models.WorkOrder.status == 'Pendente', 1),
+            (models.WorkOrder.status == 'Em Andamento', 2),
+            (models.WorkOrder.status == 'Concluído', 3),
+            else_=4
+        )
+        query = query.order_by(status_order, models.WorkOrder.created_at.desc())
+    else: # Default: Mais Recente ('recent')
+        query = query.order_by(models.WorkOrder.created_at.desc())
+
+    orders = query.all()
+
+    # 4. TRATAMENTO DO RETORNO PARA INCLUIR O NOME DO CONDOMÍNIO
+    # O Pydantic irá carregar automaticamente o objeto 'condominium' via relação.
+    return orders
