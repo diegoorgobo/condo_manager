@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, case, or_
+from sqlalchemy import func, case, text, or_
 from sqlalchemy.orm import joinedload, outerjoin
 # Importa componentes internos
 from .. import database, models, auth, schemas 
@@ -35,6 +35,14 @@ def list_work_orders(
     """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
     # 1. CRIAÇÃO DA QUERY BASE
+    try:
+        raw_count = db.execute(text("SELECT COUNT(*) FROM work_orders")).scalar_one()
+        print(f"DEBUG_FINAL: RAW WORK ORDER COUNT: {raw_count}")
+    except Exception as e:
+        print(f"DEBUG_FINAL: FALHA AO CONECTAR/CONTAR O DB: {e}")
+        raw_count = 0
+    
+    # Base query
     query = db.query(models.WorkOrder)
 
     # 2. LEFT OUTER JOIN e EAGER LOADING (Carrega o nome do condomínio)
