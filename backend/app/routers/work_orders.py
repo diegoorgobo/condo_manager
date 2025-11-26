@@ -32,47 +32,16 @@ def list_work_orders(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Filtra as OSs pelo condomínio e ordena por status ou data."""
+    """Filtra as OSs pelo condomínio e ordena por status ou data. (TEMPORARIAMENTE SEM FILTRO)"""
     
-    # Base query com eager loading
-    query = db.query(models.WorkOrder).outerjoin(models.InspectionItem).options(
-        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
-    )
+    # 🚨 CRÍTICO: Consulta mais simples possível para provar a leitura da tabela.
+    query = db.query(models.WorkOrder)
 
-    # 1. CRIAÇÃO DO LEFT JOIN para lidar com item_id=null
-    query = query.outerjoin(models.InspectionItem).options(
-        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
-    )
-
-    # 2. AUTORIZAÇÃO E FILTRAGEM (FIX FINAL)
-    # Se o usuário não for Programador, aplicamos o filtro de segurança.
-    if current_user.role != 'Programador':
-        user_condo_id = current_user.condominium_id
-        
-        # 🚨 Verifica se o usuário tem um condomínio vinculado antes de aplicar o filtro
-        if user_condo_id is None:
-            # Se o usuário logado não tiver condomínio, retorna vazio por segurança.
-            return [] 
-
-        query = query.filter(
-        or_(
-            # 🚨 CORREÇÃO CRÍTICA: Mudar None() para None
-            models.WorkOrder.item_id.is_(None), 
-            
-            # 2. OSs vinculadas ao condomínio do usuário logado
-            models.WorkOrder.item.has(
-                models.InspectionItem.condominium_id == current_user.condominium_id
-            ),
-        )
-    )
+    # 1. AUTORIZAÇÃO / FILTRO (Removido temporariamente para o teste)
+    # ----------------------------------------------------------------------
     
-    # 3. FILTRAGEM POR QUERY PARAMETER (Filtro por dropdown)
-    if condominium_id:
-        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
-
-    # 4. ORDENAÇÃO
+    # 2. ORDENAÇÃO
     if sort_by == 'status':
-        # ... (lógica de ordenação por status) ...
         status_order = case(
             (models.WorkOrder.status == 'Pendente', 1),
             (models.WorkOrder.status == 'Em Andamento', 2),
@@ -80,10 +49,12 @@ def list_work_orders(
             else_=4
         )
         query = query.order_by(status_order, models.WorkOrder.created_at.desc())
-    else:
+    else: # Default: Mais Recente ('recent')
         query = query.order_by(models.WorkOrder.created_at.desc())
 
     orders = query.all()
+    
+    # 🚨 NOTA: Os objetos 'orders' terão o campo 'condominium' como NULL, o que é esperado neste teste.
     return orders
     
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
