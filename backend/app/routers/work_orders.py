@@ -28,8 +28,8 @@ get_db = database.get_db
 @router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (SQL Mínimo)")
 def list_work_orders(
     condominium_id: Optional[int] = None,
-    sort_by: str = "status",
-    db: Session = Depends(get_db),
+    sort_by: str: "status",
+    db: Session: Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """Retorna dados brutos da tabela work_orders sem joins."""
@@ -51,12 +51,12 @@ def list_work_orders(
     orders_serializable = []
     for row in raw_results:
         orders_serializable.append(schemas.WorkOrderResponse(
-            'id':row[0],
-            'title':row[1],
-            'description':row[2],
-            'status':row[3],
-            'created_at':row[4].isoformat() if row[4] else None,
-            'closed_at':row[5].isoformat() if row[5] else None,
+            'id': row[0],
+            'title': row[1],
+            'description': row[2],
+            'status': row[3],
+            'created_at': row[4].isoformat() if row[4] else None,
+            'closed_at': row[5].isoformat() if row[5] else None,
             'photo_before_url': row[6],
             'photo_after_url': row[7],
             'item_id': row[8],
