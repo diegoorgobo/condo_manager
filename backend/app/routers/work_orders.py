@@ -43,7 +43,7 @@ def list_work_orders(
     )
 
     # 2. AUTORIZAÇÃO E FILTRAGEM (Restaurando a segurança)
-    if current_user.role != 'Programador':
+    '''if current_user.role != 'Programador':
         user_condo_id = current_user.condominium_id
         
         # Filtra para incluir OSs ligadas ao condo do usuário OU manuais (item_id IS NULL)
@@ -55,7 +55,7 @@ def list_work_orders(
                 )
             )
         else:
-            return [] 
+            return [] '''
 
     # 3. FILTRAGEM POR QUERY PARAMETER
     if condominium_id:
