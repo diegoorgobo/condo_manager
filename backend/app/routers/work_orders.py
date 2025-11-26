@@ -34,16 +34,15 @@ def list_work_orders(
 ):
     """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    # 1. CRIAÇÃO DA QUERY BASE e EAGER LOADING
+    # 1. CRIAÇÃO DA QUERY BASE e EAGER LOADING (Left Join implícito/explícito)
     query = db.query(models.WorkOrder)
 
-    # 🚨 FIX CRÍTICO: Confia apenas no options(joinedload) para construir o OUTER JOIN (LEFT JOIN)
-    # Isso carrega o nome do condomínio e inclui OSs manuais (item_id=NULL).
-    query = query.options(
+    # FIX: Usar o outerjoin explícito para forçar o LEFT JOIN
+    query = query.outerjoin(models.InspectionItem).options(
         joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
     )
 
-    # 2. AUTORIZAÇÃO E FILTRAGEM (Reativada e Corrigida)
+    # 2. AUTORIZAÇÃO E FILTRAGEM (FIX FINAL DO FILTRO)
     if current_user.role != 'Programador':
         user_condo_id = current_user.condominium_id
         
@@ -53,8 +52,8 @@ def list_work_orders(
                     # 1. OSs vinculadas ao condomínio do usuário logado
                     models.InspectionItem.condominium_id == user_condo_id,
                     
-                    # 2. OSs sem vínculo (manuais)
-                    models.WorkOrder.item_id.is_(None)
+                    # 2. OSs sem vínculo (manuais) 
+                    models.WorkOrder.item_id.is_(None) # <--- SINTAXE CORRIGIDA
                 )
             )
         else:
