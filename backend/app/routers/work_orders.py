@@ -34,34 +34,36 @@ def list_work_orders(
 ):
     """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    # 1. CRIAÇÃO DA QUERY BASE E EAGER LOADING (Carrega o nome do condomínio)
+    # 1. CRIAÇÃO DA QUERY BASE (Com carregamento aninhado e sem JOIN explícito)
     query = db.query(models.WorkOrder)
 
-    # 🚨 FIX: Outer Join explícito e Eager Load para carregar o Condomínio
-    query = query.outerjoin(models.InspectionItem).options(
+    # 🚨 FIX CRÍTICO: Confiar apenas no options(joinedload) para construir o OUTER JOIN
+    query = query.options(
         joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
     )
 
-    # 2. AUTORIZAÇÃO E FILTRAGEM (MANTIDO COMENTADO para este teste)
-    # O código de segurança está aqui, mas COMENTADO para garantir a listagem.
-    # if current_user.role != 'Programador':
-    #     user_condo_id = current_user.condominium_id
+    # 2. AUTORIZAÇÃO E FILTRAGEM (Restaurando a lógica funcional)
+    if current_user.role != 'Programador':
+        user_condo_id = current_user.condominium_id
         
-    #     if user_condo_id is not None:
-    #         query = query.filter(
-    #             or_(
-    #                 models.InspectionItem.condominium_id == user_condo_id,
-    #                 models.WorkOrder.item_id.is_(None)
-    #             )
-    #         )
-    #     else:
-    #         return [] 
+        if user_condo_id is not None:
+            query = query.filter(
+                or_(
+                    # 1. OSs vinculadas ao condomínio do usuário logado
+                    models.InspectionItem.condominium_id == user_condo_id,
+                    
+                    # 2. OSs sem vínculo (manuais)
+                    models.WorkOrder.item_id.is_(None)
+                )
+            )
+        else:
+            return [] 
 
-    # 3. FILTRAGEM POR QUERY PARAMETER (MANTIDO)
+    # 3. FILTRAGEM POR QUERY PARAMETER
     if condominium_id:
         query = query.filter(models.InspectionItem.condominium_id == condominium_id)
 
-    # 4. ORDENAÇÃO (MANTIDO)
+    # 4. ORDENAÇÃO
     if sort_by == 'status':
         status_order = case(
             (models.WorkOrder.status == 'Pendente', 1),
