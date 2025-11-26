@@ -32,48 +32,65 @@ def list_work_orders(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Filtra as OSs pelo condomínio e ordena por status ou data."""
+    """
+    Busca OSs usando SQL Bruto com JOINs para garantir que os registros NULL (Manuais) 
+    e o nome do condomínio sejam retornados, ignorando a falha do ORM.
+    """
     
-    # 1. CRIAÇÃO DA QUERY BASE e EAGER LOADING (Carrega o nome do condomínio)
-    query = db.query(models.WorkOrder)
-
-    # Aplica o LEFT OUTER JOIN explícito e Eager Loading
-    query = query.outerjoin(models.InspectionItem).options(
-        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
-    )
-
-    # 2. AUTORIZAÇÃO E FILTRAGEM (FIX FINAL)
-    if current_user.role != 'Programador':
+    # Define a consulta SQL base com LEFT JOINs explícitos
+    sql_base = """
+        SELECT 
+            wo.id, wo.title, wo.description, wo.status, wo.created_at, wo.closed_at, 
+            wo.photo_before_url, wo.photo_after_url, wo.item_id, wo.provider_id,
+            c.name AS condominium_name, c.id AS condominium_id
+        FROM work_orders wo
+        LEFT JOIN inspection_items ii ON wo.item_id = ii.id
+        LEFT JOIN condominiums c ON ii.condominium_id = c.id
+    """
+    where_clauses = ["1=1"] # Inicia o WHERE com uma condição verdadeira
+    
+    # 1. FILTRO DE SEGURANÇA (Para usuários não-Programadores)
+    if current_user.role != 'Programador' and current_user.condominium_id is not None:
         user_condo_id = current_user.condominium_id
+        # A condição OR permite listar OSs ligadas ao condo OU as OSs manuais (ii.condominium_id IS NULL)
+        where_clauses.append(f"""
+            (ii.condominium_id = {user_condo_id} OR wo.item_id IS NULL)
+        """)
+
+    # 2. FILTRO POR QUERY PARAMETER (Dropdown)
+    if condominium_id is not None:
+        where_clauses.append(f"ii.condominium_id = {condominium_id}")
+
+    # 3. MONTAGEM DA QUERY FINAL
+    sql_query_text = f"""
+        {sql_base}
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY wo.created_at DESC 
+    """
+
+    # 4. EXECUÇÃO DO SQL BRUTO
+    raw_results = db.execute(text(sql_query_text)).fetchall()
+
+    # 5. MAPEAMENTO MANUAL PARA PYDANTIC/JSON
+    orders_serializable = []
+    for row in raw_results:
+        orders_serializable.append(schemas.WorkOrderResponse(
+            id=row[0],
+            title=row[1],
+            description=row[2],
+            status=row[3],
+            created_at=row[4],
+            closed_at=row[5],
+            photo_before_url=row[6],
+            photo_after_url=row[7],
+            item_id=row[8],
+            provider_id=row[9],
+            # Mapeamento do objeto Condomínio (se o ID existir)
+            condominium=schemas.SimpleCondo(id=row[11], name=row[10]) 
+                        if row[11] is not None else None,
+        ).model_dump()) # Converte para dict para serialização final
         
-        if user_condo_id is not None:
-            query = query.filter(
-                or_(
-                    models.InspectionItem.condominium_id == user_condo_id,
-                    models.WorkOrder.item_id.is_(None)
-                )
-            )
-        else:
-            return [] 
-
-    # 3. FILTRAGEM POR QUERY PARAMETER
-    if condominium_id:
-        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
-
-    # 4. ORDENAÇÃO
-    if sort_by == 'status':
-        status_order = case(
-            (models.WorkOrder.status == 'Pendente', 1),
-            (models.WorkOrder.status == 'Em Andamento', 2),
-            (models.WorkOrder.status == 'Concluído', 3),
-            else_=4
-        )
-        query = query.order_by(status_order, models.WorkOrder.created_at.desc())
-    else:
-        query = query.order_by(models.WorkOrder.created_at.desc())
-
-    orders = query.all()
-    return orders
+    return orders_serializable
     
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
 async def update_wo_status(
