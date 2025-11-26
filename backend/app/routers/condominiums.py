@@ -9,13 +9,24 @@ router = APIRouter(prefix="/condominiums", tags=["Condominium Management"])
 get_db = database.get_db
 
 @router.get("/", response_model=list[schemas.CondominiumResponse], summary="Listar Condomínios acessíveis")
-#                                     ^^^^^^^^^^^^^^^^^^^^^^^^^ 
 def list_condominiums(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # ... (O restante da sua lógica de listagem e filtragem) ...
-    # ...
+    """
+    Lista todos os condomínios acessíveis ao usuário logado.
+    Programadores veem todos; outros perfis veem apenas o(s) vinculado(s).
+    """
+    
+    if current_user.role == 'Programador':
+        # Permite que Programadores vejam todos
+        condos = db.query(models.Condominium).all()
+    else:
+        # Perfis normais veem apenas o seu condomínio vinculado
+        condos = db.query(models.Condominium).filter(
+            models.Condominium.id == current_user.condominium_id
+        ).all()
+        
     return condos
 
 @router.post("/", response_model=schemas.CondominiumResponse, status_code=status.HTTP_201_CREATED)
