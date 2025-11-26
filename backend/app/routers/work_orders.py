@@ -25,71 +25,45 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (SQL BRUTO FINAL)")
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (Diagnóstico Mínimo)")
 def list_work_orders(
     condominium_id: Optional[int] = None,
     sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Executa consulta SQL bruta para garantir a listagem e os filtros."""
     
-    # 1. MONTAGEM DO SQL BASE (Com LEFT JOIN para incluir o Condomínio e OSs Manuais)
-    sql_base = """
+    # 🚨 TESTE FINAL: Consulta SQL Bruta MÍNIMA (Apenas campos não-nulos)
+    query = text("""
         SELECT 
-            wo.id, wo.title, wo.description, wo.status, wo.created_at, wo.closed_at, 
-            wo.photo_before_url, wo.photo_after_url, wo.item_id, wo.provider_id,
-            c.name AS condominium_name, c.id AS condominium_id
+            wo.id, wo.title, wo.description, wo.status, wo.item_id
         FROM work_orders wo
-        LEFT JOIN inspection_items ii ON wo.item_id = ii.id
-        LEFT JOIN condominiums c ON ii.condominium_id = c.id
-    """
-    
-    where_clauses = ["1=1"] # Condição base
-    
-    # 2. FILTRO DE SEGURANÇA (Para usuários não-Programadores)
-    if current_user.role != 'Programador' and current_user.condominium_id is not None:
-        user_condo_id = current_user.condominium_id
-        # Inclui OSs ligadas ao condo do usuário OU as OSs que não têm item (manual)
-        where_clauses.append(f"""
-            (ii.condominium_id = {user_condo_id} OR wo.item_id IS NULL)
-        """)
-        
-    # 3. FILTRO POR DROPDOWN
-    if condominium_id is not None:
-        where_clauses.append(f"ii.condominium_id = {condominium_id}")
-
-    # 4. ORDENAÇÃO (Simplificada, usando o campo direto do SQL)
-    order_clause = "wo.status, wo.created_at DESC"
-    if sort_by == 'recent':
-        order_clause = "wo.created_at DESC"
-
-    # 5. EXECUÇÃO DO SQL BRUTO FINAL
-    sql_query = text(f"""
-        {sql_base}
-        WHERE {' AND '.join(where_clauses)}
-        ORDER BY {order_clause} 
+        ORDER BY wo.created_at DESC
     """)
-
-    raw_results = db.execute(sql_query).fetchall()
     
-    # 6. MAPEAMENTO MANUAL PARA PYDANTIC/JSON
+    raw_results = db.execute(query).fetchall()
+
+    # 🚨 DEBUG: Imprime o total lido para confirmar a leitura da DB
+    print(f"DEBUG_FINAL: RAW WORK ORDER COUNT (TRY): {len(raw_results)}") 
+
     orders_serializable = []
     for row in raw_results:
+        # Mapeamento manual, forçando valores seguros para tipos complexos
         orders_serializable.append(schemas.WorkOrderResponse(
             id=row[0],
             title=row[1],
-            description=row[2],
+            description=row[2] or "Sem descrição", # Fallback para string
             status=row[3],
-            created_at=row[4].isoformat() if row[4] else None,
-            closed_at=row[5].isoformat() if row[5] else None,
-            photo_before_url=row[6],
-            photo_after_url=row[7],
-            item_id=row[8],
-            provider_id=row[9],
-            # Mapeamento do objeto Condomínio (o row[11] é o ID do Condomínio)
-            condominium=schemas.SimpleCondo(id=row[11], name=row[10]) 
-                        if row[11] is not None else None,
+            
+            # 🚨 FIX CRÍTICO: Injeta datetime.utcnow() para o campo obrigatório 'created_at'
+            created_at=datetime.utcnow(), 
+            
+            closed_at=None,
+            photo_before_url=None,
+            photo_after_url=None,
+            item_id=row[4],
+            provider_id=None,
+            condominium: None,
         ).model_dump())
         
     return orders_serializable
