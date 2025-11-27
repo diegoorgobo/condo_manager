@@ -1,29 +1,39 @@
-# backend/app/database.py
+# Em backend/app/database.py
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool # Importação do fix para o pooler do Supabase
+from sqlalchemy.pool import NullPool
+from sqlalchemy.engine import Engine
+from sqlalchemy import event # ⬅️ NOVO: Importar event listener
 import os
 
-# 1. Leitura da variável de ambiente (Render)
-SQLALCHEMY_DATABASE_URL = os.getenv("postgresql://postgres.jqlygddtjkvtuckwpucp:tYEb8LxvOSmT6Z49@aws-1-sa-east-1.pooler.supabase.com:6543/postgres") #os.getenv("DATABASE_URL"
+# ... (código para obter e corrigir SQLALCHEMY_DATABASE_URL mantido) ...
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Fallback para teste local se ENV não estiver setada
+# Se não existir (estamos local), usa uma string padrão ou SQLite para teste
 if not SQLALCHEMY_DATABASE_URL:
-    # USAMOS A STRING LIMPA DIRETAMENTE AQUI, JÁ QUE ELA NÃO TEM CARACTERES RUINS
-    SQLALCHEMY_DATABASE_URL = "postgresql://postgres.jqlygddtjkvtuckwpucp:tYEb8LxvOSmT6Z49@aws-1-sa-east-1.pooler.supabase.com:6543/postgres" 
+    SQLALCHEMY_DATABASE_URL = "postgresql://postgres:suasenha@localhost/condomanager"
 
-# 2. Correção Crítica do Prefixo (Supabase)
-# Substitui 'postgres://' por 'postgresql://' se necessário
+# CORREÇÃO CRÍTICA PARA RENDER/SUPABASE
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# 3. CRIAÇÃO DO MOTOR COM NULLPOOL
-# Desabilita o pooling interno do SQLAlchemy para evitar o conflito SASL com a porta 6543.
+# 🚨 FIX CRÍTICO: Listener para definir o search_path
+@event.listens_for(Engine, "connect")
+def set_postgres_search_path(dbapi_connection, connection_record):
+    """Garante que o PostgreSQL use o schema 'public'."""
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET search_path TO public;")
+        cursor.close()
+    except Exception as e:
+        print(f"Erro ao definir search_path: {e}") 
+
+# Cria o motor do banco
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    poolclass=NullPool # <--- AQUI ESTÁ A SOLUÇÃO
+    poolclass=NullPool
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
