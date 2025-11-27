@@ -25,85 +25,57 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (SQL BRUTO FINAL COMPLETO)")
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
 def list_work_orders(
     condominium_id: Optional[int] = None,
     sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Executa consulta SQL bruta com JOINs e filtros para carregar a lista completa."""
+    """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    from sqlalchemy import text 
-    from datetime import datetime
-    from typing import List
-    
-    # 🚨 CONSULTA SQL COMPLETA (12 COLUNAS)
-    sql_base = """
-        SELECT 
-            wo.id, wo.title, wo.description, wo.status, wo.created_at, wo.closed_at, 
-            wo.photo_before_url, wo.photo_after_url, wo.item_id, wo.provider_id,
-            c.name AS condominium_name, c.id AS condominium_id -- ⬅️ ÍNDICES 10 E 11 (Nome e ID do Condomínio)
-        FROM work_orders wo
-        LEFT JOIN inspection_items ii ON wo.item_id = ii.id
-        LEFT JOIN condominiums c ON ii.condominium_id = c.id
-    """
-    
-    where_clauses = ["1=1"] 
-    
-    # 1. FILTRO DE SEGURANÇA POR PERFIL
-    if current_user.role != 'Programador' and current_user.condominium_id is not None:
+    # 1. CRIAÇÃO DA QUERY BASE E EAGER LOADING (O MAIS ROBUSTO)
+    query = db.query(models.WorkOrder)
+
+    # Aplica o JOIN e Carregamento (Left Join é implícito na relação nullable WorkOrder.item)
+    query = query.outerjoin(models.InspectionItem).options(
+        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+    )
+
+    # 2. AUTORIZAÇÃO E FILTRAGEM
+    if current_user.role != 'Programador':
         user_condo_id = current_user.condominium_id
         
-        where_clauses.append(f"""
-            (ii.condominium_id = {user_condo_id} OR wo.item_id IS NULL)
-        """)
-        
-    # 2. FILTRO POR DROPDOWN (Condomínio selecionado)
-    if condominium_id is not None:
-        where_clauses.append(f"ii.condominium_id = {condominium_id}")
+        if user_condo_id is not None:
+            query = query.filter(
+                or_(
+                    # Inclui OSs vinculadas ao condomínio do usuário logado
+                    models.InspectionItem.condominium_id == user_condo_id,
+                    # Inclui OSs sem vínculo (manuais)
+                    models.WorkOrder.item_id.is_(None)
+                )
+            )
+        else:
+            return [] 
 
-    # 3. ORDENAÇÃO
-    order_clause = "wo.created_at DESC"
+    # 3. FILTRAGEM POR QUERY PARAMETER
+    if condominium_id:
+        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
+
+    # 4. ORDENAÇÃO
     if sort_by == 'status':
-        order_clause = "wo.status, wo.created_at DESC" 
-    
-    # 4. EXECUÇÃO DO SQL BRUTO FINAL
-    sql_query = text(f"""
-        {sql_base}
-        WHERE {' AND '.join(where_clauses)}
-        ORDER BY {order_clause} 
-    """)
+        status_order = case(
+            (models.WorkOrder.status == 'Pendente', 1),
+            (models.WorkOrder.status == 'Em Andamento', 2),
+            (models.WorkOrder.status == 'Concluído', 3),
+            else_=4
+        )
+        query = query.order_by(status_order, models.WorkOrder.created_at.desc())
+    else:
+        query = query.order_by(models.WorkOrder.created_at.desc())
 
-    raw_results = db.execute(sql_query).fetchall()
-
-    print(f"DEBUG_FINAL_ROWS: O BANCO RETORNOU {len(raw_results)} REGISTROS.")
-
-    # 5. MAPEAMENTO MANUAL PARA PYDANTIC/JSON
-    orders_serializable = []
-    for row in raw_results:
-        # A SQLAlchemy já retorna um objeto DATETIME. Apenas converte para ISO.
-        created_at_iso = row[4].isoformat() if row[4] else datetime.utcnow().isoformat()
-        closed_at_iso = row[5].isoformat() if row[5] else None
-
-        orders_serializable.append(schemas.WorkOrderResponse(
-            id=row[0],
-            title=row[1],
-            description=row[2],
-            status=row[3],
-            created_at=created_at_iso,
-            closed_at=closed_at_iso, 
-            photo_before_url=row[6],
-            photo_after_url=row[7],
-            item_id=row[8],
-            provider_id=row[9],
-            
-            # 🚨 Mapeamento do objeto Condomínio (ID=row[11], Name=row[10])
-            condominium=schemas.SimpleCondo(id=row[11], name=row[10]) 
-                        if row[11] is not None else None,
-        ).model_dump())
-        
-    return orders_serializable
+    orders = query.all()
+    return orders
     
 @router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
 async def update_wo_status(
