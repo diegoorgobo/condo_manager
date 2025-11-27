@@ -48,26 +48,19 @@ def list_work_orders(
 
     orders_serializable = []
     for row in raw_results:
-        # Mapeamento manual, forçando valores seguros para tipos complexos
-       orders_serializable.append(schemas.WorkOrderResponse(
-            # Campos Obrigatórios e Básicos
-            id=row[0],
+        # Mapeamento manual para Pydantic (usando APENAS Named Arguments)
+        orders_serializable.append(schemas.WorkOrderResponse(
+            # Exemplo de como DEVE ESTAR:
+            id=row[0], 
             title=row[1],
-            description=row[2] or "Sem descrição",
+            description=row[2],
             status=row[3],
+            created_at=row[4].isoformat() if row[4] else None,
+            # ... (todos os outros campos) ...
             
-            # Datas (Usa o dado real do DB e converte para string ISO)
-            created_at=row[4].isoformat() if row[4] else datetime.utcnow().isoformat(),
-            closed_at=row[5].isoformat() if row[5] else None,
-
-            # Campos Opcionais
-            photo_before_url=row[6],
-            photo_after_url=row[7],
-            item_id=row[8],
-            provider_id=row[9],
-            
-            # 🚨 CORREÇÃO: Mapeamento de relacionamento (Deve ser key=value)
+            # 🚨 CORREÇÃO CRÍTICA: Mudar a sintaxe para '='
             condominium=None, 
+            
         ).model_dump())
         
     return orders_serializable
