@@ -25,25 +25,43 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (Busca Básica)")
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço com Filtros")
 def list_work_orders(
     condominium_id: Optional[int] = None,
     sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Retorna a lista completa de OS, ignorando filtros complexos e carregamentos."""
+    """Filtra as OSs pelo condomínio e ordena por status ou data."""
     
-    # 1. CRIAÇÃO DA QUERY BASE (SEM JOINs e sem Eager Loading)
+    # 1. CRIAÇÃO DA QUERY BASE E EAGER LOADING (Carrega o nome do condomínio)
     query = db.query(models.WorkOrder)
 
-    # 2. FILTRAGEM (COMENTADA)
-    # Deixamos o filtro de segurança desativado para o teste.
+    # FIX CRÍTICO: Usa OUTERJOIN para incluir OSs manuais e JOINEDLOAD para carregar o nome
+    query = query.outerjoin(models.InspectionItem).options(
+        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
+    )
 
-    # 3. FILTRAGEM POR QUERY PARAMETER (Deixe este if, ele não é o culpado)
+    # 2. AUTORIZAÇÃO E FILTRAGEM (Restaurando a lógica de segurança)
+    if current_user.role != 'Programador':
+        user_condo_id = current_user.condominium_id
+        
+        if user_condo_id is not None:
+            query = query.filter(
+                or_(
+                    # 1. OSs vinculadas ao condomínio do usuário logado
+                    models.InspectionItem.condominium_id == user_condo_id,
+                    
+                    # 2. OSs sem vínculo (manuais)
+                    models.WorkOrder.item_id.is_(None)
+                )
+            )
+        else:
+            return [] 
+
+    # 3. FILTRAGEM POR QUERY PARAMETER
     if condominium_id:
-        # Nota: Sem o JOIN, este filtro não funciona, mas não quebra o código.
-        query = query.filter(models.WorkOrder.id > 0) # Filtro dummy para não quebrar a tipagem
+        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
 
     # 4. ORDENAÇÃO
     if sort_by == 'status':
@@ -59,27 +77,6 @@ def list_work_orders(
 
     orders = query.all()
     return orders
-    
-@router.post("/{order_id}/status", response_model=schemas.WorkOrderResponse, summary="Atualizar Status da OS")
-async def update_wo_status(
-    order_id: int,
-    data: StatusUpdateSchema,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    """Atualiza o status para Pendente, Em Andamento ou Concluído (sem foto)."""
-    db_wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == order_id).first()
-    if not db_wo:
-        raise HTTPException(status_code=404, detail="Ordem de Serviço não encontrada")
-
-    db_wo.status = data.status.capitalize()
-    
-    if data.status.lower() == "concluído" and not db_wo.closed_at:
-        db_wo.closed_at = datetime.utcnow()
-    
-    db.commit()
-    db.refresh(db_wo)
-    return db_wo
 
 @router.post("/{order_id}/close", response_model=schemas.WorkOrderResponse, summary="Concluir OS com Foto")
 async def close_wo_with_photo(
