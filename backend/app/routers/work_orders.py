@@ -25,41 +25,54 @@ get_db = database.get_db
 
 ### ROTAS DE BUSCA E GESTÃO ###
 
-@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (Busca Total)")
+@router.get("/", response_model=List[schemas.WorkOrderResponse], summary="Listar Ordens de Serviço (SQL BRUTO SEGURO)")
 def list_work_orders(
     condominium_id: Optional[int] = None,
     sort_by: str = "status",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Retorna a lista completa de OS, ignorando filtros de segurança para diagnóstico."""
+    """Retorna dados brutos da tabela work_orders sem joins, ignorando filtros."""
     
-    # 1. CRIAÇÃO DA QUERY BASE E EAGER LOADING
-    query = db.query(models.WorkOrder)
+    from sqlalchemy import text
+    from datetime import datetime # Necessário para o isoformat
+    
+    # 🚨 CONSULTA SQL BRUTA MÍNIMA SEGURA (Apenas colunas da tabela principal)
+    query = text("""
+        SELECT 
+            id, title, description, status, created_at, closed_at, 
+            photo_before_url, photo_after_url, item_id, provider_id
+        FROM work_orders
+        ORDER BY created_at DESC
+    """)
+    
+    raw_results = db.execute(query).fetchall()
 
-    # FIX: Usa OUTERJOIN para incluir OSs manuais e JOINEDLOAD para carregar o nome
-    query = query.outerjoin(models.InspectionItem).options(
-        joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
-    )
-
-    # 2. FILTRAGEM (APENAS PELO DROPDOWN - Segurança desativada)
-    if condominium_id:
-        query = query.filter(models.InspectionItem.condominium_id == condominium_id)
-
-    # 3. ORDENAÇÃO
-    if sort_by == 'status':
-        status_order = case(
-            (models.WorkOrder.status == 'Pendente', 1),
-            (models.WorkOrder.status == 'Em Andamento', 2),
-            (models.WorkOrder.status == 'Concluído', 3),
-            else_=4
-        )
-        query = query.order_by(status_order, models.WorkOrder.created_at.desc())
-    else:
-        query = query.order_by(models.WorkOrder.created_at.desc())
-
-    orders = query.all()
-    return orders
+    # Mapeamento manual para Pydantic
+    orders_serializable = []
+    for row in raw_results:
+        # Mapeamento direto dos 10 campos da tabela work_orders
+        orders_serializable.append(schemas.WorkOrderResponse(
+            id=row[0],
+            title=row[1],
+            description=row[2],
+            status=row[3],
+            
+            # Conversão segura de datas
+            created_at=row[4].isoformat() if row[4] else datetime.utcnow().isoformat(),
+            closed_at=row[5].isoformat() if row[5] else None, 
+            
+            photo_before_url=row[6],
+            photo_after_url=row[7],
+            item_id=row[8],
+            provider_id=row[9],
+            
+            # Relacionamentos complexos são forçados a None
+            condominium=None,
+        ).model_dump())
+        
+    return orders_serializable
+    
 @router.post("/{order_id}/close", response_model=schemas.WorkOrderResponse, summary="Concluir OS com Foto")
 async def close_wo_with_photo(
     order_id: int,
