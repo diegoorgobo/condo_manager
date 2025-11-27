@@ -22,13 +22,17 @@ def create_user(db: Session, user: schemas.UserCreate):
     return db_user
 
 def create_inspection(db: Session, inspection: schemas.InspectionCreate, user_id: int):
-    # ... (Criação de db_inspection) ...
-    
-    # 🚨 FIX CRÍTICO: Garantir que o condomínio_id seja salvo em CADA InspectionItem
+    # 1. Cria a Inspection (db_inspection)
+    # ... (código existente) ...
+
+    # 2. Loop de Processamento dos Itens
     for item in inspection.items:
         db_item = models.InspectionItem(
             inspection_id=db_inspection.id,
-            condominium_id=inspection.condominium_id, # ⬅️ ADIÇÃO ESSENCIAL
+            
+            # 🚨 CORREÇÃO CRÍTICA: Pegar o ID do Condomínio da Inspection principal
+            condominium_id=db_inspection.condominium_id, 
+            
             name=item.name,
             status=item.status,
             observation=item.observation
@@ -83,5 +87,6 @@ def create_work_order(db: Session, title: str, description: str, item_id: int, p
         print(f"ERRO CRÍTICO NA CRIAÇÃO DA OS: {e}")
         # Lança uma exceção para o FastAPI retornar um erro 500 (temporariamente)
         raise e
+
 
 
