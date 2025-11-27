@@ -22,16 +22,22 @@ def create_user(db: Session, user: schemas.UserCreate):
     return db_user
 
 def create_inspection(db: Session, inspection: schemas.InspectionCreate, user_id: int):
-    # Cria a vistoria
-    db_inspection = models.Inspection(
-        surveyor_id=user_id,
-        condominium_id=inspection.condominium_id,
-        is_custom=inspection.is_custom,
-        ia_analysis=inspection.ia_analysis
-    )
-    db.add(db_inspection)
+    # 1. Cria a Vistoria base (db_inspection)
+    # ... (código existente) ...
+
+    # 2. Processamento dos itens
+    for item in inspection.items:
+        db_item = models.InspectionItem(
+            inspection_id=db_inspection.id,
+            condominium_id=inspection.condominium_id, # ⬅️ ADIÇÃO CRÍTICA
+            name=item.name,
+            status=item.status,
+            observation=item.observation
+        )
+        db.add(db_item)
+    
     db.commit()
-    db.refresh(db_inspection)
+    return db_inspection
     
     # Adiciona os itens da vistoria
     for item in inspection.items:
@@ -78,3 +84,4 @@ def create_work_order(db: Session, title: str, description: str, item_id: int, p
         print(f"ERRO CRÍTICO NA CRIAÇÃO DA OS: {e}")
         # Lança uma exceção para o FastAPI retornar um erro 500 (temporariamente)
         raise e
+
