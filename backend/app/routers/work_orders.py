@@ -42,22 +42,20 @@ def list_work_orders(
         joinedload(models.WorkOrder.item).joinedload(models.InspectionItem.condominium)
     )
 
-    # 2. AUTORIZAÇÃO E FILTRAGEM
-    if current_user.role != 'Programador':
-        user_condo_id = current_user.condominium_id
+    # 2. AUTORIZAÇÃO E FILTRAGEM 🚨 COMENTAR ESTE BLOCO INTEIRO PARA TESTE 🚨
+    # if current_user.role != 'Programador':
+    #     user_condo_id = current_user.condominium_id
         
-        if user_condo_id is not None:
-            query = query.filter(
-                or_(
-                    # Inclui OSs vinculadas ao condomínio do usuário logado
-                    models.InspectionItem.condominium_id == user_condo_id,
-                    # Inclui OSs sem vínculo (manuais)
-                    models.WorkOrder.item_id.is_(None)
-                )
-            )
-        else:
-            return [] 
-
+    #     if user_condo_id is not None:
+    #         query = query.filter(
+    #             or_(
+    #                 models.InspectionItem.condominium_id == user_condo_id,
+    #                 models.WorkOrder.item_id.is_(None)
+    #             )
+    #         )
+    #     else:
+    #         return [] 
+    # ----------------------------------------------------------------------
     # 3. FILTRAGEM POR QUERY PARAMETER
     if condominium_id:
         query = query.filter(models.InspectionItem.condominium_id == condominium_id)
